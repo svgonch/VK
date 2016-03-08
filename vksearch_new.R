@@ -1,5 +1,4 @@
 library(httr)
-library(XML)
 library(xlsx)
 library(dplyr)
 library(jsonlite)
@@ -10,7 +9,7 @@ vk <- oauth_endpoint(NULL,
       authorize = "https://oauth.vk.com/authorize",
       access = "https://oauth.vk.com/access_token"
 )
-vk_auth <- oauth2.0_token(vk, myvk, scope = "offline", cache = FALSE)
+vk_auth <- oauth2.0_token(vk, myvk, scope = "offline", type = "application/x-www-form-urlencoded", cache = FALSE)
 tmp <- strsplit(toString(names(vk_auth$credentials)), '"')
 token <- tmp[[1]][4]
 #################### USER SEARCH ####################
@@ -21,9 +20,9 @@ vers <- "&v=5.44"
 ## Сдвиг поиска (Всегда первый!)
 offset <- "offset=50"
 ## Age from
-age_from <- "&age_from=21"
+age_from <- "&age_from=20"
 ## Age to
-age_to <- "&age_to=29"
+age_to <- "&age_to=35"
 ##FIELDS
       ## Personal
       pers <- "personal"
@@ -42,7 +41,7 @@ group_id <- "&group_id=55284725"
 uni <- "&university=2"
 ##Moscow 
 moscow <- "&city=1" 
-zapros <- paste(us_se, offset, age_from, age_to, counting, group_id, uni, moscow, fields, vers,
+zapros <- paste(us_se, offset, age_from, age_to, counting, uni, group_id, moscow, fields, vers,
                 "&access_token=", token, sep = "")
 user_info <- fromJSON(zapros)
 political <- rep("NULL", length(user_info$response$items$id))
@@ -59,29 +58,37 @@ for (i in 1:length(df$no)) {
 df <- filter(df, !is.na(political) & Message == 1)
 
 #################### WALL SEARCH ####################
-wall_search <- function(extended=0, poisk = "путин") {
+library(stringr)
+wall_search <- function(poisk = "") {
       ## Wall search
       wa_se <- "https://api.vk.com/method/wall.search?"
       ## Query
       query <- "&query="
       ## Extended
-      ext_c <- "&extended="
-      ext_v <- 0
+      ext <- "&extended=0"
       df$wall <- as.numeric(rep(NA, nrow(df)))
+      df$text <- NA
       while(anyNA(df$wall) == TRUE) {
             nas <- is.na(df$wall)
             nas_vec <- df$id[nas]
             for (k in 1:length(nas_vec)) {
-                  zapros3 <- paste(wa_se, "&owner_id=", nas_vec[k], query, poisk, ext_c, ext_v, vers, "&access_token=", token, sep = "")
+                  zapros3 <- paste(wa_se, "&owner_id=", nas_vec[k], query, poisk, ext, vers, "&access_token=", token, sep = "")
                   wall_info <- fromJSON(zapros3)
-                  if(length(wall_info$response$count) > 0) {
+                  if(length(wall_info$response$count) > 0 | length(wall_info$response$items$text) > 0) {
                         df[which(df$id == nas_vec[k]), "wall"] <- wall_info$response$count
+                        text <- wall_info$response$items$text
+                        text <- text[grep(poisk, text, ignore.case = TRUE)]
+                        text <- paste(text, collapse = "", sep = "")
+                        df[which(df$id == nas_vec[k]), "text"] <- str_trim(text)
                   } else {df[k, "wall"] <- NA}
             }
+            ostal <- nrow(df) - sum(!is.na(df$wall))
+            wm <- paste("Осталось", ostal, "польз.", sep = " ")
+            print(wm)
       }
-      message("Ready!")
+      assign("df", df, envir = globalenv())
 }
 
 df <- filter(df, wall > 0)
 df <- mutate(df, link = paste("https://vk.com/id", df$id, sep = ""))
-write.xlsx(df, "user_info.xlsx", sheetName = "last names", col.names = TRUE)
+write.xlsx(df, "user_info2.xlsx", sheetName = "last names", col.names = TRUE)
